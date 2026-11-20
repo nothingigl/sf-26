@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ferrari SF-26 (2026) — Интерактивный гараж NFS Heat</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --nfs-magenta: #ff2a85;
+      --nfs-cyan: #00f0ff;
+      --ferrari-red: #dc0000;
+      --glass-bg: rgba(10, 12, 22, 0.78);
+      --glass-border: rgba(255, 255, 255, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #06070d;
+      color: #f3f6ff;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+
+    .glass-panel {
+      background: var(--glass-bg);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid var(--glass-border);
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
+    }
+
+    .neon-accent-bar {
+      background: linear-gradient(180deg, var(--nfs-magenta) 0%, var(--nfs-cyan) 100%);
+    }
+
+    .neon-text-gradient {
+      background: linear-gradient(90deg, #ffffff 0%, #c8f8ff 65%, #ff9ec9 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    /* Stage lighting modes */
+    #stage-viewport {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      cursor: grab;
+      touch-action: none;
+    }
+    #stage-viewport.dragging {
+      cursor: grabbing;
+    }
+
+    #stage-transform {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform-origin: center center;
+      transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+      will-change: transform;
+    }
+    #stage-transform.no-transition {
+      transition: none;
+    }
+
+    #image-frame {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      max-width: 100%;
+      max-height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .car-layer {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .car-media-box {
+      position: relative;
+      aspect-ratio: 16 / 9;
+      width: min(100vw, calc(100vh * 16 / 9));
+      height: min(100vh, calc(100vw * 9 / 16));
+      overflow: hidden;
+    }
+
+    /* On wide screens, fill nicely while keeping aspect ratio */
+    @media (min-aspect-ratio: 16/9) {
+      .car-media-box {
+        width: 100vw;
+        height: calc(100vw * 9 / 16);
+      }
+    }
+    @media (max-aspect-ratio: 16/9) {
+      .car-media-box {
+        height: 100vh;
+        width: calc(100vh * 16 / 9);
+      }
+    }
+
+    .car-img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0;
+      transition: opacity 0.55s ease, filter 0.45s ease;
+      pointer-events: none;
+    }
+    .car-img.active {
+      opacity: 1;
+    }
+
+    /* Lighting Mode Filters */
+    body[data-lighting="neon"] .car-img {
+      filter: contrast(1.04) saturate(1.08);
+    }
+    body[data-lighting="studio"] .car-img {
+      filter: brightness(1.16) contrast(1.03) saturate(0.92) hue-rotate(-6deg);
+    }
+    body[data-lighting="midnight"] .car-img {
+      filter: brightness(0.84) contrast(1.22) saturate(1.24);
+    }
+
+    /* Ambient lighting tint overlay */
+    #ambient-overlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      transition: background 0.45s ease, opacity 0.45s ease;
+      z-index: 5;
+    }
+    body[data-lighting="neon"] #ambient-overlay {
+      background:
+        radial-gradient(circle at 12% 20%, rgba(255, 42, 133, 0.14), transparent 42%),
+        radial-gradient(circle at 88% 24%, rgba(0, 240, 255, 0.13), transparent 42%),
+        radial-gradient(circle at 50% 50%, transparent 55%, rgba(4, 6, 12, 0.55) 100%);
+    }
+    body[data-lighting="studio"] #ambient-overlay {
+      background:
+        radial-gradient(circle at 50% 0%, rgba(215, 235, 255, 0.14), transparent 55%),
+        radial-gradient(circle at 50% 50%, transparent 62%, rgba(8, 12, 20, 0.35) 100%);
+    }
+    body[data-lighting="midnight"] #ambient-overlay {
+      background:
+        radial-gradient(circle at 15% 80%, rgba(255, 42, 133, 0.2), transparent 45%),
+        radial-gradient(circle at 85% 15%, rgba(0, 240, 255, 0.18), transparent 45%),
+        radial-gradient(circle at 50% 50%, transparent 40%, rgba(2, 3, 8, 0.72) 100%);
+    }
+
+    /* Auto-tour gentle drift */
+    @keyframes kenBurnsDrift {
+      0% { transform: scale(1.02) translate3d(-0.6%, 0.2%, 0); }
+      50% { transform: scale(1.08) translate3d(0.6%, -0.3%, 0); }
+      100% { transform: scale(1.02) translate3d(-0.6%, 0.2%, 0); }
+    }
+    .auto-tour-active .car-media-box {
+      animation: kenBurnsDrift 11s ease-in-out infinite;
+    }
+
+    /* Hotspot Pin */
+    .hotspot-pin {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      z-index: 15;
+      width: 34px;
+      height: 34px;
+      border-radius: 9999px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      border: 2px solid var(--nfs-cyan);
+      background: rgba(10, 12, 22, 0.78);
+      color: #ffffff;
+      box-shadow: 0 0 18px rgba(0, 240, 255, 0.65);
+      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+    }
+    .hotspot-pin::after {
+      content: "";
+      position: absolute;
+      inset: -6px;
+      border-radius: 9999px;
+      border: 1.5px solid rgba(0, 240, 255, 0.6);
+      animation: pulseRing 2.1s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+      pointer-events: none;
+    }
+    .hotspot-pin:hover,
+    .hotspot-pin.selected {
+      transform: translate(-50%, -50%) scale(1.18);
+      border-color: var(--nfs-magenta);
+      background: rgba(255, 42, 133, 0.9);
+      box-shadow: 0 0 24px rgba(255, 42, 133, 0.85);
+    }
+    .hotspot-pin.selected::after {
+      border-color: rgba(255, 42, 133, 0.8);
+    }
+    @keyframes pulseRing {
+      0% { transform: scale(0.85); opacity: 0.9; }
+      100% { transform: scale(1.65); opacity: 0; }
+    }
+
+    /* Recording dot blink */
+    @keyframes recBlink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.22; }
+    }
+    .rec-dot {
+      animation: recBlink 1.4s ease-in-out infinite;
+    }
+
+    /* HUD hide transitions */
+    .hud-element {
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+    body.hud-hidden .hud-element {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(8px);
+    }
+    body.hud-hidden #restore-hud-btn {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* Custom Scrollbar for Specs Drawer */
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.04);
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: rgba(0, 240, 255, 0.35);
+      border-radius: 9999px;
+    }
+
+    .thumb-card {
+      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .thumb-card.active {
+      border-color: var(--nfs-magenta);
+      box-shadow: 0 0 18px rgba(255, 42, 133, 0.45);
+      transform: translateY(-2px);
+    }
+  </style>
+</head>
+<body data-lighting="neon">
+
+  <!-- Interactive Stage -->
+  <main id="stage-viewport" aria-label="Интерактивный осмотр болида Ferrari SF-26">
+    <div id="stage-transform">
+      <div id="image-frame">
+        <div class="car-media-box" id="car-media-box">
+          <!-- 5 photorealistic views rendered here -->
+          <img class="car-img active" data-index="0" src="images/01_front_34.jpg" alt="Ferrari SF-26 вид спереди в три четверти в гараже NFS Heat" />
+          <img class="car-img" data-index="1" src="images/02_front_aero.jpg" alt="Ferrari SF-26 крупный план переднего крыла и носа" />
+          <img class="car-img" data-index="2" src="images/03_side_profile.jpg" alt="Ferrari SF-26 боковой профиль в гараже" />
+          <img class="car-img" data-index="3" src="images/04_cockpit_halo.jpg" alt="Ferrari SF-26 кокпит, руль и Halo" />
+          <img class="car-img" data-index="4" src="images/05_rear_diffuser.jpg" alt="Ferrari SF-26 вид сзади, диффузор и антикрыло" />
+          <!-- Hotspots Container inside media box so pins stay locked to car parts on zoom/pan -->
+          <div id="hotspots-layer" class="absolute inset-0"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Ambient Lighting Vignette Overlay -->
+  <div id="ambient-overlay"></div>
+
+  <!-- Restore HUD Button (visible only when HUD is hidden) -->
+  <button id="restore-hud-btn" type="button"
+    class="fixed top-4 right-4 z-40 opacity-0 pointer-events-none glass-panel px-3.5 py-2 rounded-lg text-xs font-bold tracking-wider uppercase text-cyan-300 hover:text-white hover:border-cyan-400/60 flex items-center gap-2 transition">
+    <i data-lucide="eye" class="w-4 h-4"></i>
+    Показать HUD
+  </button>
+
+  <!-- Top HUD Bar -->
+  <header class="hud-element fixed top-3 left-3 right-3 sm:top-5 sm:left-5 sm:right-5 z-30 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+    <!-- Left Garage Badge -->
+    <div class="glass-panel rounded-lg overflow-hidden flex items-stretch pointer-events-auto">
+      <div class="w-1.5 neon-accent-bar"></div>
+      <div class="px-3.5 py-2 flex items-center gap-2.5">
+        <span class="w-2.5 h-2.5 rounded-full bg-[#ff2a85] rec-dot shadow-[0_0_10px_#ff2a85]"></span>
+        <div class="leading-tight">
+          <div class="text-[11px] sm:text-xs font-extrabold tracking-[0.14em] uppercase text-white">
+            PALM CITY GARAGE <span class="text-cyan-300">// SF-26</span>
+          </div>
+          <div id="hud-cam-label" class="text-[10px] font-semibold tracking-widest uppercase text-slate-300">
+            CAM 01 • 3/4 СПЕРЕДИ
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Controls Toolbar -->
+    <div class="glass-panel rounded-lg px-2 py-1.5 flex items-center gap-1 sm:gap-1.5 pointer-events-auto flex-wrap">
+      <!-- Lighting Mode Selector -->
+      <div class="flex items-center bg-white/5 rounded-md p-0.5 mr-0.5" role="group" aria-label="Режим освещения гаража">
+        <button type="button" data-light="neon" class="light-btn px-2 py-1 rounded text-[11px] font-bold uppercase tracking-wider bg-[#ff2a85] text-white transition" title="Неон Palm City">
+          Неон
+        </button>
+        <button type="button" data-light="studio" class="light-btn px-2 py-1 rounded text-[11px] font-bold uppercase tracking-wider text-slate-300 hover:text-white transition" title="Студийный свет Фиорано">
+          Студия
+        </button>
+        <button type="button" data-light="midnight" class="light-btn px-2 py-1 rounded text-[11px] font-bold uppercase tracking-wider text-slate-300 hover:text-white transition" title="Ночной контрастный режим">
+          Ночь
+        </button>
+      </div>
+
+      <button id="btn-hotspots" type="button" class="px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 bg-cyan-500/20 text-cyan-200 border border-cyan-400/40 hover:bg-cyan-500/30 transition" title="Показать или скрыть интерактивные точки осмотра">
+        <i data-lucide="crosshair" class="w-3.5 h-3.5"></i>
+        <span class="hidden md:inline">Точки</span>
+      </button>
+
+      <button id="btn-autotour" type="button" class="px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 bg-white/5 text-slate-200 border border-white/10 hover:bg-white/15 transition" title="Автоматический облет камеры">
+        <i data-lucide="play" class="w-3.5 h-3.5" id="autotour-icon"></i>
+        <span class="hidden md:inline" id="autotour-text">Авто-тур</span>
+      </button>
+
+      <button id="btn-audio" type="button" class="px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 bg-white/5 text-slate-200 border border-white/10 hover:bg-white/15 transition" title="Синтвейв-атмосфера гаража">
+        <i data-lucide="volume-x" class="w-3.5 h-3.5" id="audio-icon"></i>
+        <span class="hidden lg:inline">Звук</span>
+      </button>
+
+      <button id="btn-specs" type="button" class="px-2.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 bg-[#dc0000]/85 hover:bg-[#dc0000] text-white border border-red-400/40 transition" title="Полные технические характеристики Ferrari SF-26">
+        <i data-lucide="gauge" class="w-3.5 h-3.5"></i>
+        <span>ТТХ SF-26</span>
+      </button>
+
+      <button id="btn-hide-hud" type="button" class="p-1.5 rounded-md text-slate-300 hover:text-white hover:bg-white/10 transition" title="Фоторежим (скрыть интерфейс)">
+        <i data-lucide="eye-off" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Left / Right Camera Orbit Arrows -->
+  <button id="btn-prev-view" type="button" aria-label="Предыдущий ракурс"
+    class="hud-element fixed left-3 sm:left-5 top-1/2 -translate-y-1/2 z-20 glass-panel w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center text-slate-200 hover:text-cyan-300 hover:border-cyan-400/60 transition">
+    <i data-lucide="chevron-left" class="w-5 h-5"></i>
+  </button>
+
+  <button id="btn-next-view" type="button" aria-label="Следующий ракурс"
+    class="hud-element fixed right-3 sm:right-5 top-1/2 -translate-y-1/2 z-20 glass-panel w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center text-slate-200 hover:text-cyan-300 hover:border-cyan-400/60 transition">
+    <i data-lucide="chevron-right" class="w-5 h-5"></i>
+  </button>
+
+  <!-- Floating Hotspot Telemetry Card -->
+  <aside id="hotspot-card" class="hud-element fixed right-4 top-20 sm:right-6 sm:top-24 z-30 w-[calc(100vw-2rem)] max-w-sm glass-panel rounded-xl overflow-hidden hidden">
+    <div class="h-1 w-full bg-gradient-to-r from-[#ff2a85] via-[#00f0ff] to-[#dc0000]"></div>
+    <div class="p-4">
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <div id="hc-tag" class="text-[10px] font-extrabold uppercase tracking-[0.16em] text-cyan-300">ТЕЛЕМЕТРИЯ УЗЛА</div>
+          <h3 id="hc-title" class="text-base font-extrabold text-white mt-0.5">Узел болида</h3>
+        </div>
+        <button id="hc-close" type="button" aria-label="Закрыть карточку" class="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <p id="hc-desc" class="text-xs sm:text-sm text-slate-200 leading-relaxed mt-2"></p>
+      <div id="hc-metrics" class="grid grid-cols-2 gap-2 mt-3"></div>
+      <div class="mt-3 pt-2.5 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400">
+        <span>Официальные данные 2026</span>
+        <a id="hc-source" href="https://www.ferrari.com/en-EN/formula1/sf-26" target="_blank" rel="noopener noreferrer" class="text-cyan-300 hover:text-cyan-200 font-semibold flex items-center gap-1">
+          Источник <i data-lucide="external-link" class="w-3 h-3"></i>
+        </a>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom HUD: Car Info + Zoom Controls + Camera Dock -->
+  <footer class="hud-element fixed bottom-3 left-3 right-3 sm:bottom-5 sm:left-5 sm:right-5 z-30 flex flex-col lg:flex-row lg:items-end justify-between gap-3 pointer-events-none">
+    <!-- Bottom-Left Car Info & Zoom Controls -->
+    <div class="flex flex-col gap-2 pointer-events-auto max-w-xl">
+      <!-- Zoom Bar + Hint -->
+      <div class="flex items-center gap-2 flex-wrap">
+        <div class="glass-panel rounded-lg px-2 py-1 flex items-center gap-1">
+          <button id="btn-zoom-out" type="button" class="p-1 rounded text-slate-300 hover:text-white hover:bg-white/10 transition" title="Отдалить">
+            <i data-lucide="zoom-out" class="w-3.5 h-3.5"></i>
+          </button>
+          <span id="zoom-readout" class="text-[11px] font-bold tabular-nums text-cyan-300 w-10 text-center">100%</span>
+          <button id="btn-zoom-in" type="button" class="p-1 rounded text-slate-300 hover:text-white hover:bg-white/10 transition" title="Приблизить">
+            <i data-lucide="zoom-in" class="w-3.5 h-3.5"></i>
+          </button>
+          <button id="btn-zoom-reset" type="button" class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase text-slate-300 hover:text-white hover:bg-white/10 transition" title="Сбросить масштаб">
+            1:1
+          </button>
+        </div>
+        <div class="glass-panel rounded-lg px-2.5 py-1 text-[11px] text-slate-300 hidden sm:flex items-center gap-1.5">
+          <i data-lucide="move" class="w-3.5 h-3.5 text-[#ff2a85]"></i>
+          <span>Тяни для вращения • Колесо мыши — зум • Кликай по точкам</span>
+        </div>
+      </div>
+
+      <!-- Car Identity Card -->
+      <div class="glass-panel rounded-xl overflow-hidden flex items-stretch">
+        <div class="w-1.5 neon-accent-bar"></div>
+        <div class="px-4 py-2.5 sm:py-3">
+          <div class="flex items-center gap-2.5 flex-wrap">
+            <h1 id="view-title" class="text-lg sm:text-2xl font-black tracking-tight neon-text-gradient uppercase">
+              FERRARI SF-26 (2026)
+            </h1>
+            <span class="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider bg-[#dc0000]/90 text-white">
+              № 16 LECLERC
+            </span>
+          </div>
+          <p id="view-subtitle" class="text-xs sm:text-sm text-slate-300 mt-0.5">
+            Глянцевый Rosso Scuderia • Ретро-белый кожух двигателя HP
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom-Right 5 Camera Angle Thumbnails -->
+    <nav aria-label="Выбор ракурса камеры" class="glass-panel rounded-xl p-1.5 flex items-center gap-1.5 overflow-x-auto max-w-full pointer-events-auto">
+      <button type="button" data-view="0" class="thumb-card active relative shrink-0 w-20 sm:w-24 aspect-video rounded-lg overflow-hidden border-2 border-white/15 text-left">
+        <img src="images/01_front_34.jpg" alt="3/4 Спереди" class="w-full h-full object-cover" />
+        <span class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-1.5 py-0.5 text-[10px] font-bold text-white truncate">01 Общий</span>
+      </button>
+      <button type="button" data-view="1" class="thumb-card relative shrink-0 w-20 sm:w-24 aspect-video rounded-lg overflow-hidden border-2 border-white/15 text-left">
+        <img src="images/02_front_aero.jpg" alt="Нос и крыло" class="w-full h-full object-cover" />
+        <span class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-1.5 py-0.5 text-[10px] font-bold text-white truncate">02 Нос</span>
+      </button>
+      <button type="button" data-view="2" class="thumb-card relative shrink-0 w-20 sm:w-24 aspect-video rounded-lg overflow-hidden border-2 border-white/15 text-left">
+        <img src="images/03_side_profile.jpg" alt="Профиль" class="w-full h-full object-cover" />
+        <span class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-1.5 py-0.5 text-[10px] font-bold text-white truncate">03 Профиль</span>
+      </button>
+      <button type="button" data-view="3" class="thumb-card relative shrink-0 w-20 sm:w-24 aspect-video rounded-lg overflow-hidden border-2 border-white/15 text-left">
+        <img src="images/04_cockpit_halo.jpg" alt="Кокпит" class="w-full h-full object-cover" />
+        <span class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-1.5 py-0.5 text-[10px] font-bold text-white truncate">04 Кокпит</span>
+      </button>
+      <button type="button" data-view="4" class="thumb-card relative shrink-0 w-20 sm:w-24 aspect-video rounded-lg overflow-hidden border-2 border-white/15 text-left">
+        <img src="images/05_rear_diffuser.jpg" alt="Задняя часть" class="w-full h-full object-cover" />
+        <span class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-1.5 py-0.5 text-[10px] font-bold text-white truncate">05 Диффузор</span>
+      </button>
+    </nav>
+  </footer>
+
+  <!-- Technical Specs Slide-Over Drawer -->
+  <div id="specs-backdrop" class="fixed inset-0 z-40 bg-black/65 backdrop-blur-sm hidden opacity-0 transition-opacity duration-300"></div>
+  <aside id="specs-drawer" aria-label="Технические характеристики Ferrari SF-26"
+    class="fixed top-0 right-0 bottom-0 z-50 w-full max-w-md glass-panel border-l border-white/15 transform translate-x-full transition-transform duration-300 flex flex-col">
+    <div class="h-1.5 w-full bg-gradient-to-r from-[#dc0000] via-[#ff2a85] to-[#00f0ff]"></div>
+    <div class="p-5 border-b border-white/10 flex items-center justify-between">
+      <div>
+        <div class="text-[11px] font-extrabold uppercase tracking-[0.16em] text-cyan-300">SCUDERIA FERRARI HP • PROJECT 678</div>
+        <h2 class="text-xl font-black text-white mt-0.5">Технические данные SF-26</h2>
+      </div>
+      <button id="btn-close-specs" type="button" aria-label="Закрыть панель ТТХ" class="p-2 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+    </div>
+
+    <div class="p-5 overflow-y-auto custom-scroll space-y-5 flex-1 text-sm">
+      <!-- Quick KPI Grid -->
+      <div class="grid grid-cols-2 gap-2.5">
+        <div class="bg-white/5 border border-white/10 rounded-lg p-3">
+          <div class="text-[10px] uppercase tracking-wider text-slate-400">Масса (с пилотом)</div>
+          <div class="text-lg font-black text-white mt-0.5">770 кг</div>
+        </div>
+        <div class="bg-white/5 border border-white/10 rounded-lg p-3">
+          <div class="text-[10px] uppercase tracking-wider text-slate-400">Мощность MGU-K</div>
+          <div class="text-lg font-black text-cyan-300 mt-0.5">350 кВт</div>
+        </div>
+        <div class="bg-white/5 border border-white/10 rounded-lg p-3">
+          <div class="text-[10px] uppercase tracking-wider text-slate-400">Двигатель</div>
+          <div class="text-lg font-black text-[#ff2a85] mt-0.5">067/6 V6 1.6T</div>
+        </div>
+        <div class="bg-white/5 border border-white/10 rounded-lg p-3">
+          <div class="text-[10px] uppercase tracking-wider text-slate-400">Пилоты 2026</div>
+          <div class="text-sm font-bold text-white mt-1">#16 Leclerc / #44 Hamilton</div>
+        </div>
+      </div>
+
+      <!-- Chassis Section -->
+      <section>
+        <h3 class="text-xs font-extrabold uppercase tracking-[0.14em] text-cyan-300 mb-2">Шасси и подвеска</h3>
+        <div class="bg-white/5 rounded-lg divide-y divide-white/10 border border-white/10">
+          <div class="px-3.5 py-2 flex justify-between gap-3"><span class="text-slate-400">Монокок</span><span class="text-right font-medium text-white">Карбоновый сотовый + Halo</span></div>
+          <div class="px-3.5 py-2 flex justify-between gap-3"><span class="text-slate-400">Подвеска</span><span class="text-right font-medium text-white">Push-Rod спереди и сзади</span></div>
+          <div class="px-3.5 py-2 flex justify-between gap-3"><span class="text-slate-400">Аэродинамика</span><span class="text-right font-medium text-white">Активное переднее крыло (2026)</span></div>
+          <div class="px-3.5 py-2 flex justify-between gap-3"><span class="text-slate-400">Трансмиссия</span><span class="text-right font-medium text-white">8 передач + задний ход, гидродифф.</span></div>
+          <div class="px-3.5 py-2 flex justify-between gap-3"><span class="text-slate-400">Тормоза</span><span class="text-right font-medium text-white">Карбоновые диски Brembo</span></div>
+          <div class="px-3.5 py-2 flex justify-between gap-3"><span class="text-slate-400">Колёса</span><span class="text-right font-medium text-white">18 дюймов (перед и зад)</span></div>
+        </div>
+      </section>
+
+      <!-- Power Unit Section -->
+      <section>
+        <h3 class="text-xs font-extrabold uppercase tracking-[0.14em] text-[#ff2a85] mb-2">Силовая установка Ferrari 067/6</h3>
+        <div class="bg-white/5 rounded-lg divide-y divide-white/10 border border-white/10">
+          <div class="px-3.5 py-2 flex justify-between gap-3"><span class="text-slate-400">Конфигурация</span><span class="text-right font-medium text-white">V6 90°, 1 600 см³, 4 кл./цил.</span></div>
+          <div class="px-3.5 py-2 flex justify-between gap-3"><span class="text-slate-400">Диаметр × ход</span><span class="text-right font-medium text-white">80 мм × 53 мм</span></div>
+          <div class="px-3.5 py-2 flex justify-between gap-3"><span class="text-slate-400">Наддув</span><span class="text-right font-medium text-white">Монотурбо, до 150 000 об/мин</span></div>
+          <div class="px-3.5 py-2 flex justify-between gap-3"><span class="text-slate-400">Впрыск / энергия</span><span class="text-right font-medium text-white">350 бар • до 3 000 МДж/ч</span></div>
+        </div>
+      </section>
+
+      <!-- ERS Section -->
+      <section>
+        <h3 class="text-xs font-extrabold uppercase tracking-[0.14em] text-cyan-300 mb-2">Гибридная система ERS (2026)</h3>
+        <div class="bg-white/5 rounded-lg divide-y divide-white/10 border border-white/10">
+          <div class="px-3.5 py-2 flex justify-between gap-3"><span class="text-slate-400">Мотор-генератор</span><span class="text-right font-medium text-white">MGU-K 350 кВт (до 60 000 об/мин)</span></div>
+          <div class="px-3.5 py-2 flex justify-between gap-3"><span class="text-slate-400">Батарея Li-Ion</span><span class="text-right font-medium text-white">от 35 кг • до 1 000 В</span></div>
+          <div class="px-3.5 py-2 flex justify-between gap-3"><span class="text-slate-400">Запас / заряд</span><span class="text-right font-medium text-white">4 МДж SOC дельта / 9 МДж заряд</span></div>
+        </div>
+      </section>
+
+      <!-- Livery & Sources -->
+      <section class="pb-4">
+        <h3 class="text-xs font-extrabold uppercase tracking-[0.14em] text-slate-300 mb-2">Источники данных</h3>
+        <div class="flex flex-wrap gap-2 text-xs">
+          <a href="https://www.ferrari.com/en-EN/formula1/sf-26" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-cyan-300 flex items-center gap-1">
+            Ferrari.com (SF-26) <i data-lucide="external-link" class="w-3 h-3"></i>
+          </a>
+          <a href="https://motorsport.tech/formula-1/ferrari-unveils-retro-sf-26-car-livery-for-2026-f1-season" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-cyan-300 flex items-center gap-1">
+            Motorsport.tech <i data-lucide="external-link" class="w-3 h-3"></i>
+          </a>
+          <a href="https://www.the-race.com/formula-1/ferrari-2026-f1-car-serrated-shark-fin-engine-cover/" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-cyan-300 flex items-center gap-1">
+            The Race <i data-lucide="external-link" class="w-3 h-3"></i>
+          </a>
+        </div>
+      </section>
+    </div>
+  </aside>
+
+  <script>
+    const VIEWS = [
+      {
+        cam: "CAM 01 • 3/4 СПЕРЕДИ",
+        title: "FERRARI SF-26 (2026)",
+        subtitle: "Глянцевый Rosso Scuderia после 7 сезонов матового покрытия • Ретро-белый кожух HP",
+        hotspots: [
+          {
+            id: "v0-wing",
+            x: 31, y: 66,
+            tag: "АЭРОДИНАМИКА 2026",
+            title: "Подвижное переднее крыло",
+            desc: "SF-26 — первый болид Ferrari нового регламента 2026 года с подвижной передней аэродинамикой для снижения лобового сопротивления на прямых.",
+            metrics: [
+              { label: "Регламент", value: "FIA 2026 Active" },
+              { label: "Философия", value: "Снижение массы" }
+            ],
+            source: "https://www.ferrari.com/en-EN/formula1/sf-26"
+          },
+          {
+            id: "v0-airbox",
+            x: 59, y: 49,
+            tag: "ЛИВРЕЯ 2026",
+            title: "Глянцевый красный и белый кожух",
+            desc: "После семи сезонов матовой краски Ferrari вернулась к яркому глянцу Rosso Scuderia и добавила крупную белую зону вокруг воздухозаборника в стиле болидов Ники Лауды 1970-х.",
+            metrics: [
+              { label: "Покрытие", value: "Глянец Rosso" },
+              { label: "Презентация", value: "23 янв. 2026" }
+            ],
+            source: "https://motorsport.tech/formula-1/ferrari-unveils-retro-sf-26-car-livery-for-2026-f1-season"
+          },
+          {
+            id: "v0-wheels",
+            x: 48, y: 63,
+            tag: "ШАССИ И ТОРМОЗА",
+            title: "Колёса 18″ и тормоза Brembo",
+            desc: "18-дюймовые диски сочетаются с вентилируемыми карбоновыми тормозными дисками Brembo спереди и сзади (с электронным управлением задними тормозами).",
+            metrics: [
+              { label: "Диски", value: "18 дюймов" },
+              { label: "Масса болида", value: "770 кг" }
+            ],
+            source: "https://www.ferrari.com/en-EN/formula1/sf-26"
+          }
+        ]
+      },
+      {
+        cam: "CAM 02 • НОС И ПЕРЕДНЕЕ КРЫЛО",
+        title: "АКТИВНАЯ АЭРОДИНАМИКА",
+        subtitle: "Подвижные элементы переднего крыла • Передняя подвеска Push-Rod",
+        hotspots: [
+          {
+            id: "v1-nose",
+            x: 50, y: 72,
+            tag: "АКТИВНОЕ КРЫЛО",
+            title: "Переднее антикрыло нового поколения",
+            desc: "Полностью переосмысленная передняя часть корпуса под регламент 2026 года объединяет подвижные закрылки с облегчённым углепластиковым носовым обтекателем.",
+            metrics: [
+              { label: "Тип", value: "Active Front Aero" },
+              { label: "Материал", value: "Углепластик" }
+            ],
+            source: "https://www.ferrari.com/en-EN/formula1/sf-26"
+          },
+          {
+            id: "v1-susp",
+            x: 38, y: 55,
+            tag: "ПОДВЕСКА",
+            title: "Передняя схема Push-Rod",
+            desc: "SF-26 использует толкатели (Push-Rod) на обеих осях — более чистая компоновка помогает направлять воздушный поток вдоль днища и понтонов.",
+            metrics: [
+              { label: "Передняя ось", value: "Push-Rod" },
+              { label: "Задняя ось", value: "Push-Rod" }
+            ],
+            source: "https://www.the-race.com/formula-1/ferrari-2026-f1-car-serrated-shark-fin-engine-cover/"
+          }
+        ]
+      },
+      {
+        cam: "CAM 03 • БОКОВОЙ ПРОФИЛЬ",
+        title: "СИЛУЭТ И МОТОР 067/6",
+        subtitle: "Турбогибрид V6 1.6 л • MGU-K 350 кВт • Общая масса 770 кг",
+        hotspots: [
+          {
+            id: "v2-pu",
+            x: 57, y: 52,
+            tag: "СИЛОВАЯ УСТАНОВКА",
+            title: "Ferrari 067/6 V6 Turbo Hybrid",
+            desc: "1,6-литровый V6 с углом развала 90° и монотурбиной до 150 000 об/мин работает в паре с усиленной электрической частью ERS на 350 кВт.",
+            metrics: [
+              { label: "Поток энергии", value: "3 000 МДж/ч" },
+              { label: "Впрыск", value: "до 350 бар" }
+            ],
+            source: "https://motorsport.tech/formula-1/ferrari-unveils-retro-sf-26-car-livery-for-2026-f1-season"
+          },
+          {
+            id: "v2-ers",
+            x: 47, y: 63,
+            tag: "ГИБРИД ERS",
+            title: "Батарея 1 000 В и MGU-K",
+            desc: "Литий-ионный аккумулятор (минимум 35 кг вместе с электроникой управления) питает мотор-генератор MGU-K мощностью 350 кВт при частоте до 60 000 об/мин.",
+            metrics: [
+              { label: "Напряжение", value: "до 1 000 В" },
+              { label: "MGU-K", value: "350 кВт" }
+            ],
+            source: "https://motorsport.tech/formula-1/ferrari-unveils-retro-sf-26-car-livery-for-2026-f1-season"
+          },
+          {
+            id: "v2-rear",
+            x: 74, y: 61,
+            tag: "ТРАНСМИССИЯ",
+            title: "8-ступенчатая продольная КПП",
+            desc: "Продольная коробка передач Ferrari (8 передач вперёд + задний ход) и гидравлически управляемый задний дифференциал.",
+            metrics: [
+              { label: "КПП", value: "8 + R" },
+              { label: "Дифференциал", value: "Гидравлический" }
+            ],
+            source: "https://www.ferrari.com/en-EN/formula1/sf-26"
+          }
+        ]
+      },
+      {
+        cam: "CAM 04 • КОКПИТ И HALO",
+        title: "КОКПИТ И ЗАЩИТА HALO",
+        subtitle: "Сотовый углепластиковый монокок • Руль управления гибридом и активным крылом",
+        hotspots: [
+          {
+            id: "v3-wheel",
+            x: 51, y: 59,
+            tag: "УПРАВЛЕНИЕ",
+            title: "Руль и распределение энергии",
+            desc: "В регламенте 2026 года роль гибридной энергии резко выросла: пилот напрямую контролирует режимы отдачи MGU-K (350 кВт) и настройки тормозного баланса.",
+            metrics: [
+              { label: "Заряд ERS", value: "до 9 МДж" },
+              { label: "Пилот №16", value: "Шарль Леклер" }
+            ],
+            source: "https://www.ferrari.com/en-EN/formula1/sf-26"
+          },
+          {
+            id: "v3-halo",
+            x: 42, y: 34,
+            tag: "БЕЗОПАСНОСТЬ",
+            title: "Карбоновый монокок и Halo",
+            desc: "Монокок выполнен из углепластикового композита сотовой структуры с интегрированной защитной дугой Halo; сиденье и обвес также полностью карбоновые.",
+            metrics: [
+              { label: "Шасси", value: "Carbon Honeycomb" },
+              { label: "Проект", value: "Project 678" }
+            ],
+            source: "https://www.ferrari.com/en-EN/formula1/sf-26"
+          },
+          {
+            id: "v3-intake",
+            x: 79, y: 34,
+            tag: "ВОЗДУХОЗАБОРНИК",
+            title: "Верхний воздухозаборник и кожух HP",
+            desc: "Белая отделка вокруг верхнего воздухозаборника отсылает к классическим Ferrari 1970-х и выделяет партнёрство Scuderia Ferrari HP.",
+            metrics: [
+              { label: "Команда", value: "Scuderia Ferrari HP" },
+              { label: "Напарник", value: "#44 Л. Хэмилтон" }
+            ],
+            source: "https://motorsport.tech/formula-1/ferrari-unveils-retro-sf-26-car-livery-for-2026-f1-season"
+          }
+        ]
+      },
+      {
+        cam: "CAM 05 • ЗАДНЯЯ ЧАСТЬ И ДИФФУЗОР",
+        title: "ЗАДНЯЯ ЧАСТЬ И ДИФФУЗОР",
+        subtitle: "Впервые с 2011 года — задняя подвеска Push-Rod • Углепластиковый диффузор",
+        hotspots: [
+          {
+            id: "v4-wing",
+            x: 37, y: 47,
+            tag: "ЗАДНЕЕ КРЫЛО",
+            title: "Заднее антикрыло SF-26",
+            desc: "Работает синхронно с передней активной аэродинамикой для баланса прижимной силы в поворотах и максимальной скорости на прямых.",
+            metrics: [
+              { label: "Регламент", value: "FIA 2026" },
+              { label: "Баланс", value: "Active Aero" }
+            ],
+            source: "https://www.ferrari.com/en-EN/formula1/sf-26"
+          },
+          {
+            id: "v4-diff",
+            x: 35, y: 63,
+            tag: "ДИФФУЗОР И ПОДВЕСКА",
+            title: "Диффузор и задняя Push-Rod",
+            desc: "Переход на заднюю подвеску Push-Rod (впервые для Ferrari с 2011 года) освободил пространство в зоне диффузора для более эффективного отвода потока.",
+            metrics: [
+              { label: "Задняя схема", value: "Push-Rod (с 2011)" },
+              { label: "Тормоза сзади", value: "Brake-by-Wire" }
+            ],
+            source: "https://www.the-race.com/formula-1/ferrari-2026-f1-car-serrated-shark-fin-engine-cover/"
+          }
+        ]
+      }
+    ];
+
+    const state = {
+      activeView: 0,
+      zoom: 1,
+      panX: 0,
+      panY: 0,
+      showHotspots: true,
+      activeHotspotId: null,
+      lighting: "neon",
+      autoTour: false,
+      hudHidden: false,
+      specsOpen: false,
+      audioOn: false
+    };
+
+    // DOM refs
+    const viewport = document.getElementById("stage-viewport");
+    const transformEl = document.getElementById("stage-transform");
+    const hotspotsLayer = document.getElementById("hotspots-layer");
+    const carImgs = Array.from(document.querySelectorAll(".car-img"));
+    const thumbBtns = Array.from(document.querySelectorAll(".thumb-card"));
+    const lightBtns = Array.from(document.querySelectorAll(".light-btn"));
+
+    const hudCamLabel = document.getElementById("hud-cam-label");
+    const viewTitle = document.getElementById("view-title");
+    const viewSubtitle = document.getElementById("view-subtitle");
+    const zoomReadout = document.getElementById("zoom-readout");
+
+    const hotspotCard = document.getElementById("hotspot-card");
+    const hcTag = document.getElementById("hc-tag");
+    const hcTitle = document.getElementById("hc-title");
+    const hcDesc = document.getElementById("hc-desc");
+    const hcMetrics = document.getElementById("hc-metrics");
+    const hcSource = document.getElementById("hc-source");
+
+    const specsDrawer = document.getElementById("specs-drawer");
+    const specsBackdrop = document.getElementById("specs-backdrop");
+
+    let autoTourTimer = null;
+
+    // Web Audio API synthwave garage ambience (started only on click)
+    let audioCtx = null;
+    let masterGain = null;
+    let chordInterval = null;
+    let activeOscs = [];
+
+    function stopAudio() {
+      if (chordInterval) {
+        clearInterval(chordInterval);
+        chordInterval = null;
+      }
+      if (masterGain && audioCtx) {
+        try {
+          masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
+          masterGain.gain.setTargetAtTime(0.0001, audioCtx.currentTime, 0.25);
+        } catch (e) {}
+      }
+      setTimeout(() => {
+        activeOscs.forEach(o => { try { o.stop(); } catch (e) {} });
+        activeOscs = [];
+      }, 600);
+    }
+
+    function startAudio() {
+      const AudioContextCls = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextCls) return;
+      if (!audioCtx) {
+        audioCtx = new AudioContextCls();
+      }
+      if (audioCtx.state === "suspended") {
+        audioCtx.resume();
+      }
+      masterGain = audioCtx.createGain();
+      masterGain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+      masterGain.gain.linearRampToValueAtTime(0.11, audioCtx.currentTime + 0.8);
+
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(520, audioCtx.currentTime);
+
+      filter.connect(masterGain);
+      masterGain.connect(audioCtx.destination);
+
+      const chords = [
+        [73.42, 146.83, 220.0, 261.63],
+        [58.27, 116.54, 174.61, 220.0],
+        [98.0, 146.83, 196.0, 233.08],
+        [55.0, 110.0, 164.81, 220.0]
+      ];
+      let cIdx = 0;
+
+      function playChord() {
+        if (!state.audioOn || !audioCtx) return;
+        const now = audioCtx.currentTime;
+        const notes = chords[cIdx % chords.length];
+        cIdx += 1;
+        notes.forEach((freq, i) => {
+          const osc = audioCtx.createOscillator();
+          const g = audioCtx.createGain();
+          osc.type = i === 0 ? "triangle" : "sawtooth";
+          osc.frequency.setValueAtTime(freq, now);
+          osc.detune.setValueAtTime((i - 1.5) * 6, now);
+
+          g.gain.setValueAtTime(0.0001, now);
+          g.gain.linearRampToValueAtTime(i === 0 ? 0.35 : 0.14, now + 0.8);
+          g.gain.setValueAtTime(i === 0 ? 0.35 : 0.14, now + 3.4);
+          g.gain.linearRampToValueAtTime(0.0001, now + 4.4);
+
+          osc.connect(g);
+          g.connect(filter);
+          osc.start(now);
+          osc.stop(now + 4.5);
+          activeOscs.push(osc);
+        });
+      }
+
+      playChord();
+      chordInterval = setInterval(playChord, 4200);
+    }
+
+    function applyTransform(immediate = false) {
+      const maxPanX = ((state.zoom - 1) * viewport.clientWidth) / 2;
+      const maxPanY = ((state.zoom - 1) * viewport.clientHeight) / 2;
+      state.panX = Math.max(-maxPanX, Math.min(maxPanX, state.panX));
+      state.panY = Math.max(-maxPanY, Math.min(maxPanY, state.panY));
+
+      if (immediate) {
+        transformEl.classList.add("no-transition");
+      } else {
+        transformEl.classList.remove("no-transition");
+      }
+      transformEl.style.transform = `translate3d(${state.panX}px, ${state.panY}px, 0) scale(${state.zoom})`;
+      zoomReadout.textContent = `${Math.round(state.zoom * 100)}%`;
+    }
+
+    function setZoom(nextZoom) {
+      state.zoom = Math.max(1, Math.min(2.6, Number(nextZoom.toFixed(2))));
+      if (state.zoom <= 1.01) {
+        state.zoom = 1;
+        state.panX = 0;
+        state.panY = 0;
+      }
+      applyTransform(false);
+    }
+
+    function closeHotspotCard() {
+      state.activeHotspotId = null;
+      hotspotCard.classList.add("hidden");
+      document.querySelectorAll(".hotspot-pin").forEach(p => p.classList.remove("selected"));
+    }
+
+    function openHotspotCard(hs) {
+      state.activeHotspotId = hs.id;
+      hcTag.textContent = hs.tag;
+      hcTitle.textContent = hs.title;
+      hcDesc.textContent = hs.desc;
+      hcSource.href = hs.source;
+      hcMetrics.innerHTML = hs.metrics.map(m => `
+        <div class="bg-white/5 border border-white/10 rounded-lg px-2.5 py-2">
+          <div class="text-[10px] uppercase tracking-wider text-slate-400">${m.label}</div>
+          <div class="text-xs font-extrabold text-white mt-0.5">${m.value}</div>
+        </div>
+      `).join("");
+      hotspotCard.classList.remove("hidden");
+      document.querySelectorAll(".hotspot-pin").forEach(p => {
+        p.classList.toggle("selected", p.dataset.hsid === hs.id);
+      });
+    }
+
+    function renderHotspots() {
+      hotspotsLayer.innerHTML = "";
+      if (!state.showHotspots) return;
+      const view = VIEWS[state.activeView];
+      view.hotspots.forEach((hs, idx) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "hotspot-pin" + (state.activeHotspotId === hs.id ? " selected" : "");
+        btn.style.left = hs.x + "%";
+        btn.style.top = hs.y + "%";
+        btn.dataset.hsid = hs.id;
+        btn.title = hs.title;
+        btn.setAttribute("aria-label", hs.title);
+        btn.innerHTML = `<span class="text-[11px] font-black">${idx + 1}</span>`;
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          stopAutoTour();
+          if (state.activeHotspotId === hs.id) {
+            closeHotspotCard();
+          } else {
+            openHotspotCard(hs);
+          }
+        });
+        hotspotsLayer.appendChild(btn);
+      });
+    }
+
+    function setView(index, keepZoom = false) {
+      const normalized = (index + VIEWS.length) % VIEWS.length;
+      state.activeView = normalized;
+      carImgs.forEach((img, idx) => img.classList.toggle("active", idx === normalized));
+      thumbBtns.forEach((btn, idx) => btn.classList.toggle("active", idx === normalized));
+
+      const view = VIEWS[normalized];
+      hudCamLabel.textContent = view.cam;
+      viewTitle.textContent = view.title;
+      viewSubtitle.textContent = view.subtitle;
+
+      if (!keepZoom) {
+        state.zoom = 1;
+        state.panX = 0;
+        state.panY = 0;
+        applyTransform(false);
+      }
+      closeHotspotCard();
+      renderHotspots();
+    }
+
+    function stopAutoTour() {
+      if (!state.autoTour) return;
+      state.autoTour = false;
+      if (autoTourTimer) {
+        clearInterval(autoTourTimer);
+        autoTourTimer = null;
+      }
+      document.body.classList.remove("auto-tour-active");
+      updateAutoTourButton();
+    }
+
+    function toggleAutoTour() {
+      if (state.autoTour) {
+        stopAutoTour();
+      } else {
+        state.autoTour = true;
+        state.zoom = 1;
+        state.panX = 0;
+        state.panY = 0;
+        applyTransform(false);
+        document.body.classList.add("auto-tour-active");
+        autoTourTimer = setInterval(() => {
+          setView(state.activeView + 1, false);
+        }, 5200);
+        updateAutoTourButton();
+      }
+    }
+
+    function updateAutoTourButton() {
+      const btn = document.getElementById("btn-autotour");
+      const text = document.getElementById("autotour-text");
+      if (state.autoTour) {
+        btn.className = "px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 bg-[#ff2a85]/25 text-pink-200 border border-[#ff2a85]/60 hover:bg-[#ff2a85]/35 transition";
+        text.textContent = "Пауза";
+      } else {
+        btn.className = "px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 bg-white/5 text-slate-200 border border-white/10 hover:bg-white/15 transition";
+        text.textContent = "Авто-тур";
+      }
+    }
+
+    function toggleSpecs(open) {
+      state.specsOpen = open;
+      if (open) {
+        specsBackdrop.classList.remove("hidden");
+        requestAnimationFrame(() => {
+          specsBackdrop.classList.remove("opacity-0");
+          specsDrawer.classList.remove("translate-x-full");
+        });
+      } else {
+        specsBackdrop.classList.add("opacity-0");
+        specsDrawer.classList.add("translate-x-full");
+        setTimeout(() => specsBackdrop.classList.add("hidden"), 300);
+      }
+    }
+
+    // Drag to orbit (when zoom == 1) OR pan (when zoom > 1)
+    let isPointerDown = false;
+    let startX = 0;
+    let startY = 0;
+    let startPanX = 0;
+    let startPanY = 0;
+    let movedDistance = 0;
+
+    viewport.addEventListener("pointerdown", (e) => {
+      if (e.target.closest(".hotspot-pin")) return;
+      isPointerDown = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      startPanX = state.panX;
+      startPanY = state.panY;
+      movedDistance = 0;
+      viewport.classList.add("dragging");
+      viewport.setPointerCapture(e.pointerId);
+    });
+
+    viewport.addEventListener("pointermove", (e) => {
+      if (!isPointerDown) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      movedDistance = Math.max(movedDistance, Math.hypot(dx, dy));
+      if (state.zoom > 1.01) {
+        stopAutoTour();
+        state.panX = startPanX + dx;
+        state.panY = startPanY + dy;
+        applyTransform(true);
+      }
+    });
+
+    viewport.addEventListener("pointerup", (e) => {
+      if (!isPointerDown) return;
+      const dx = e.clientX - startX;
+      isPointerDown = false;
+      viewport.classList.remove("dragging");
+      try { viewport.releasePointerCapture(e.pointerId); } catch (err) {}
+
+      if (state.zoom <= 1.01 && Math.abs(dx) > 55) {
+        stopAutoTour();
+        setView(dx < 0 ? state.activeView + 1 : state.activeView - 1);
+      } else if (movedDistance < 8 && !e.target.closest(".hotspot-pin")) {
+        closeHotspotCard();
+      }
+    });
+
+    // Mouse wheel zoom
+    viewport.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      stopAutoTour();
+      const delta = e.deltaY < 0 ? 0.2 : -0.2;
+      setZoom(state.zoom + delta);
+    }, { passive: false });
+
+    // Buttons & Controls
+    document.getElementById("btn-prev-view").addEventListener("click", () => {
+      stopAutoTour();
+      setView(state.activeView - 1);
+    });
+    document.getElementById("btn-next-view").addEventListener("click", () => {
+      stopAutoTour();
+      setView(state.activeView + 1);
+    });
+
+    thumbBtns.forEach(btn => {
+      btn.addEventListener("click", () => {
+        stopAutoTour();
+        setView(Number(btn.dataset.view));
+      });
+    });
+
+    lightBtns.forEach(btn => {
+      btn.addEventListener("click", () => {
+        state.lighting = btn.dataset.light;
+        document.body.dataset.lighting = state.lighting;
+        lightBtns.forEach(b => {
+          const active = b.dataset.light === state.lighting;
+          b.className = active
+            ? "light-btn px-2 py-1 rounded text-[11px] font-bold uppercase tracking-wider bg-[#ff2a85] text-white transition"
+            : "light-btn px-2 py-1 rounded text-[11px] font-bold uppercase tracking-wider text-slate-300 hover:text-white transition";
+        });
+      });
+    });
+
+    document.getElementById("btn-hotspots").addEventListener("click", () => {
+      state.showHotspots = !state.showHotspots;
+      const btn = document.getElementById("btn-hotspots");
+      btn.className = state.showHotspots
+        ? "px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 bg-cyan-500/20 text-cyan-200 border border-cyan-400/40 hover:bg-cyan-500/30 transition"
+        : "px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 bg-white/5 text-slate-400 border border-white/10 hover:bg-white/15 transition";
+      if (!state.showHotspots) closeHotspotCard();
+      renderHotspots();
+    });
+
+    document.getElementById("btn-autotour").addEventListener("click", toggleAutoTour);
+
+    document.getElementById("btn-audio").addEventListener("click", () => {
+      state.audioOn = !state.audioOn;
+      const btn = document.getElementById("btn-audio");
+      const icon = document.getElementById("audio-icon");
+      if (state.audioOn) {
+        startAudio();
+        btn.className = "px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 bg-cyan-500/20 text-cyan-200 border border-cyan-400/40 hover:bg-cyan-500/30 transition";
+        icon.setAttribute("data-lucide", "volume-2");
+      } else {
+        stopAudio();
+        btn.className = "px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 bg-white/5 text-slate-200 border border-white/10 hover:bg-white/15 transition";
+        icon.setAttribute("data-lucide", "volume-x");
+      }
+      if (window.lucide) window.lucide.createIcons();
+    });
+
+    document.getElementById("btn-specs").addEventListener("click", () => toggleSpecs(true));
+    document.getElementById("btn-close-specs").addEventListener("click", () => toggleSpecs(false));
+    specsBackdrop.addEventListener("click", () => toggleSpecs(false));
+
+    document.getElementById("btn-hide-hud").addEventListener("click", () => {
+      state.hudHidden = true;
+      document.body.classList.add("hud-hidden");
+    });
+    document.getElementById("restore-hud-btn").addEventListener("click", () => {
+      state.hudHidden = false;
+      document.body.classList.remove("hud-hidden");
+    });
+
+    document.getElementById("hc-close").addEventListener("click", closeHotspotCard);
+
+    document.getElementById("btn-zoom-in").addEventListener("click", () => { stopAutoTour(); setZoom(state.zoom + 0.35); });
+    document.getElementById("btn-zoom-out").addEventListener("click", () => { stopAutoTour(); setZoom(state.zoom - 0.35); });
+    document.getElementById("btn-zoom-reset").addEventListener("click", () => { stopAutoTour(); setZoom(1); });
+
+    // Keyboard shortcuts
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") {
+        stopAutoTour();
+        setView(state.activeView + 1);
+      } else if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") {
+        stopAutoTour();
+        setView(state.activeView - 1);
+      } else if (e.key === "Escape") {
+        if (state.specsOpen) toggleSpecs(false);
+        else if (state.hudHidden) {
+          state.hudHidden = false;
+          document.body.classList.remove("hud-hidden");
+        } else {
+          closeHotspotCard();
+        }
+      } else if (e.key === "+" || e.key === "=") {
+        stopAutoTour();
+        setZoom(state.zoom + 0.25);
+      } else if (e.key === "-") {
+        stopAutoTour();
+        setZoom(state.zoom - 0.25);
+      }
+    });
+
+    window.addEventListener("resize", () => applyTransform(true));
+
+    // Init
+    setView(0);
+    if (window.lucide) {
+      window.lucide.createIcons();
+    }
+  </script>
+</body>
+</html>
